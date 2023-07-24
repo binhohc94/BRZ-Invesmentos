@@ -5,6 +5,9 @@ from datetime import datetime,timedelta
 import pandas as pd
 
 
+# Função que calcula os preços diários a partir dos dados históricos
+def calcular_precos_diarios(acao):
+    return acao['Adj Close']
 
 # Função que calcula os retornos semanais consolidados a partir dos dados históricos
 def calcular_retornos_semanais(acao):
@@ -21,6 +24,11 @@ def calcular_variacao_volume_semanal(acao):
     acao['Variação Volume'] = acao['Volume'].pct_change().mul(100)
     variacao_volume_semanal = acao['Variação Volume'].resample('W').sum()
     return variacao_volume_semanal
+# Função que calcula os retornos mensais consolidados a partir dos dados históricos
+def calcular_retornos_mensais(acao):
+    acao['Retorno Diário'] = acao['Adj Close'].pct_change().mul(100)
+    retornos_mensais = acao['Retorno Diário'].resample('M').sum()
+    return retornos_mensais
 
 # Função que será executada quando o botão for clicado
 def funcao_submit(ativos,dias):
@@ -32,11 +40,14 @@ def funcao_submit(ativos,dias):
     fig_retorno = go.Figure()
     fig_volume = go.Figure()
     fig_variacao_volume = go.Figure()
+    fig_retorno_mensal = go.Figure()
 
     # Criar um dicionário vazio para armazenar os dados dos retornos semanais consolidados
     dados_retornos_semanais = {}
     dados_volumes_semanais = {}
     dados_variacao_volume_semanal = {}
+    dados_precos_diarios = {}
+    dados_retornos_mensais = {}
 
     # Criar um dicionário vazio para armazenar os dados dos desvios padrão
     # desvios_padrao = {}
@@ -46,11 +57,28 @@ def funcao_submit(ativos,dias):
     for ativo in ativos:
         if ativo=="IBOV":
             acao = yf.download('^BVSP', period=dias+'d')
+            # Definir uma espessura maior para a linha do IBOV (3)
+            espessura_linha = 3.5
         else:
             acao = yf.download(ativo+'.SA', period=dias+'d')
+            # Definir uma espessura maior para a linha do IBOV (3)
+            espessura_linha = 1.5
+
         normalized_prices = acao['Adj Close'] / acao['Adj Close'].iloc[0]
         # Definir manualmente a legenda para cada ativo
-        fig_preco.add_trace(go.Scatter(x=normalized_prices.index, y=normalized_prices, name=ativo, showlegend=True))
+        fig_preco.add_trace(go.Scatter(x=normalized_prices.index, y=normalized_prices, name=ativo, showlegend=True, 
+                                       line=dict(width=espessura_linha)))
+        # Adicionar anotação para o nome do ativo ao final da linha
+        # Adicionar anotação para o nome do ativo ao final da linha
+        ultimo_preco = normalized_prices.iloc[-1]
+        fig_preco.add_annotation(
+            x=normalized_prices.index[-1],
+            y=ultimo_preco,
+            text=ativo,
+            showarrow=False,  # Remover a seta da anotação
+            font=dict(size=8, family='bold'),  # Deixar o texto em negrito
+                yshift=3  # Ajustar a posição vertical da anotação (subir 5 pixels)
+        )
         
         # Calcular os retornos semanais consolidados
         retornos_semanais = calcular_retornos_semanais(acao)
@@ -65,10 +93,19 @@ def funcao_submit(ativos,dias):
         fig_variacao_volume.add_trace(go.Bar(x=variacao_volume_semanal.index, y=variacao_volume_semanal, name=ativo,
                                              showlegend=True))
 
+        # Calcular os preços diários
+        precos_diarios = calcular_precos_diarios(acao)
+        dados_precos_diarios[ativo] = precos_diarios
+
+        # Calcular os retornos mensais consolidados
+        retornos_mensais = calcular_retornos_mensais(acao)
+        fig_retorno_mensal.add_trace(go.Bar(x=retornos_mensais.index, y=retornos_mensais, name=ativo, showlegend=True))
+
         # Adicionar os dados do ativo aos dicionários
         dados_retornos_semanais[ativo] = retornos_semanais
         dados_volumes_semanais[ativo] = volumes_semanais
         dados_variacao_volume_semanal[ativo] = variacao_volume_semanal
+        dados_retornos_mensais[ativo] = retornos_mensais
 
         
 
@@ -110,6 +147,14 @@ def funcao_submit(ativos,dias):
         xaxis=dict(showgrid=False),
         yaxis=dict(showgrid=False)
     )
+    fig_retorno_mensal.update_layout(
+        title='Retornos Consolidados por Mês',
+        xaxis_title='Data',
+        yaxis_title='Retorno Mensal(%)',
+        plot_bgcolor='white',
+        xaxis=dict(showgrid=False),
+        yaxis=dict(showgrid=False)
+    )
     # Adicionar a linha reta para o desvio padrão no gráfico de retornos consolidados por semana
     # Definir uma paleta de cores para as linhas de desvio padrão
     # cores = ['red', 'blue', 'green', 'purple', 'orange', 'brown', 'pink', 'gray', 'olive']
@@ -144,6 +189,7 @@ def funcao_submit(ativos,dias):
     # Exibir os gráficos
     st.plotly_chart(fig_preco, use_container_width=True)
     st.plotly_chart(fig_retorno, use_container_width=True)
+    st.plotly_chart(fig_retorno_mensal, use_container_width=True)
     st.plotly_chart(fig_volume, use_container_width=True)
     st.plotly_chart(fig_variacao_volume, use_container_width=True)
     
@@ -186,6 +232,33 @@ def funcao_submit(ativos,dias):
     for coluna in tabela_retornos.columns[1:]:
         tabela_retornos[coluna] = tabela_retornos[coluna].apply(lambda x: '{:.2f}'.format(x).replace('.', ','))
 
+    # Criar a tabela de preços diários
+    tabela_precos = pd.DataFrame(dados_precos_diarios)
+
+    # Inverter as linhas do DataFrame para exibir os valores mais recentes primeiro
+    tabela_precos = tabela_precos.iloc[::-1]
+
+    # Renomear o índice para 'Data'
+    tabela_precos = tabela_precos.rename_axis('Data')
+
+    # Converter o índice em uma coluna regular e renomear a coluna para 'Data'
+    tabela_precos.reset_index(inplace=True)
+
+    # Formatar a coluna de datas para o formato "dd-mm-yyyy"
+    tabela_precos['Data'] = tabela_precos['Data'].dt.strftime('%d-%m-%Y')
+
+    # Formatando os valores de preço para o formato "x,y" em todas as colunas de ativos
+    for coluna in tabela_precos.columns[1:]:
+        tabela_precos[coluna] = tabela_precos[coluna].apply(lambda x: '{:.2f}'.format(x).replace('.', ','))
+
+    # Escrever a tabela
+    st.write("Tabela de Preços Diários:")
+    # Adicionar o botão de download para exportar a tabela em formato Excel
+    csv_export = tabela_precos.to_csv(index=False, sep=';', decimal=',')
+    st.download_button(label="Exportar para Excel", data=csv_export, file_name="tabela_retornos.csv")
+    # Exibir a tabela
+    st.table(tabela_precos)
+
     # Escrever a tabela
     st.write("Tabela de Retornos Semanais Consolidados:")
     # Adicionar o botão de download para exportar a tabela em formato Excel
@@ -200,6 +273,14 @@ def funcao_submit(ativos,dias):
 
 # Criar a interface do aplicativo com o Streamlit
 def main():
+    
+    
+    # URL da imagem hospedada no Imgur
+    url_imagem = "https://i.ibb.co/x5C1Txs/image.png"
+
+    # Exibindo a imagem no Streamlit
+    st.image(url_imagem, width=200, use_column_width=False)
+
     # Título do aplicativo
     st.title('Relatório de Análise de Ativo(s)')
 
