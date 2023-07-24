@@ -59,6 +59,10 @@ def funcao_submit(ativos,dias):
             acao = yf.download('^BVSP', period=dias+'d')
             # Definir uma espessura maior para a linha do IBOV (3)
             espessura_linha = 3.5
+        elif not ativo[-1].isnumeric():
+            acao = yf.download(ativo, period=dias+'d')
+            # Definir uma espessura maior para a linha do IBOV (3)
+            espessura_linha = 1.5
         else:
             acao = yf.download(ativo+'.SA', period=dias+'d')
             # Definir uma espessura maior para a linha do IBOV (3)
